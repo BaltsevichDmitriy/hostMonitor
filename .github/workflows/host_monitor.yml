@@ -1,24 +1,26 @@
-name: Host Monitor
+name: Home Assistant Monitor
 on:
   schedule:
     - cron: '*/30 * * * *'  # Проверка каждые 30 минут
-  workflow_dispatch:        # Ручной запуск
+  workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - name: Check host
+      - name: Check Home Assistant
         id: check
         run: |
-          # Проверяем доступность хоста с таймаутом 10 секунд
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://chapay.duckdns.org:8123/ || echo "000")
-          if [ "$STATUS" -eq 200 ]; then
+          # Пробуем получить ответ от HA с таймаутом 10 секунд
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://chapay.duckdns.org:8123/ || echo "CURL_ERROR")
+          
+          # Home Assistant может возвращать 401 (Unauthorized) при работающем сервисе
+          if [[ "$RESPONSE" =~ ^(200|401)$ ]]; then
             echo "result=UP" >> $GITHUB_OUTPUT
-            echo "status_code=$STATUS" >> $GITHUB_OUTPUT
+            echo "status_code=$RESPONSE" >> $GITHUB_OUTPUT
           else
             echo "result=DOWN" >> $GITHUB_OUTPUT
-            echo "status_code=$STATUS" >> $GITHUB_OUTPUT
+            echo "status_code=$RESPONSE" >> $GITHUB_OUTPUT
           fi
 
       - name: Send Telegram alert
@@ -26,5 +28,5 @@ jobs:
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}" \
-          -d "text=🚨 ВНИМАНИЕ! Хост http://chapay.duckdns.org:8123/ недоступен!%0AКод статуса: ${{ steps.check.outputs.status_code }}%0AВремя: $(date '+%Y-%m-%d %H:%M:%S')" \
+          -d "text=🚨 ВНИМАНИЕ! Проблема с Home Assistant!%0AАдрес: http://chapay.duckdns.org:8123/%0AКод ответа: ${{ steps.check.outputs.status_code }}%0AВремя: $(date '+%Y-%m-%d %H:%M:%S')%0A%0AПроверьте сервер вручную." \
           -d "disable_web_page_preview=true"
